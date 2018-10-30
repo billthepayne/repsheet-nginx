@@ -20,6 +20,7 @@ typedef struct {
   ngx_flag_t user_lookup;
   ngx_flag_t ip_lookup;
   ngx_flag_t proxy_headers;
+  ngx_flag_t recorder;
   ngx_str_t cookie;
   ngx_int_t whitelist_CIDR_cache_initial_size;
   ngx_int_t blacklist_CIDR_cache_initial_size;
@@ -407,6 +408,61 @@ ngx_http_repsheet_handler(ngx_http_request_t *r)
     }
   }
 
+  //Recorder section - after Redis validation, prior to any marking / blacklist checking.
+  //2018-10-30 - Rough cut to test functionality. 
+  //TODO: Cleanup.  Error checking for all things. Fix portability.
+
+  if (main_conf->recorder) {  // If recorder is enabled per the conf file, record the request.
+    int address_code;
+    char address[INET6_ADDRSTRLEN];
+    struct tm start; // TODO: Use nginx data type...
+    time_t now = ngx_time();  // This feels... wrong?  TODO: Investigate time from r*.
+    char timestamp[50];
+    ngx_str_t *user_agent;
+    ngx_str_t *uri;
+    ngx_str_t *args;
+    ngx_str_t *usermethod;
+
+    // Max length for user-agent = 4096 bytes
+    char uadata[4097];
+    uadata[0] = '\0';
+
+    address[0] = '\0';
+    address_code = derive_actor_address(r, loc_conf, address);
+    if (address_code > 0) {
+      // TODO: Do something here...
+    }
+
+
+    ngx_libc_gmtime(now, &start);
+    sprintf(timestamp, "%d/%d/%d %d:%d:%d", (start.tm_mon + 1), start.tm_mday, (1900 + start.tm_year), start.tm_hour, start.tm_min, start.tm_sec);
+
+    // Check for and process user_agent header
+    if (r->headers_in.user_agent != NULL) {
+      int ualen;
+      user_agent = &(r->headers_in.user_agent->value);
+      ualen = (user_agent->len > 4096) ? 4096 : user_agent->len;
+      uadata[ualen] = '\0';
+      strncpy(uadata,  (char *) user_agent->data, ualen);
+    }
+
+    uri = &(r->uri);
+    args = &(r->args);
+    usermethod = &(r->method_name);
+
+    char uridata[uri->len + 1];
+    char argdata[args->len + 1];
+    char umdata[usermethod->len + 1];
+    uridata[0] = argdata[0] = umdata[0] = '\0';
+    strncpy(uridata, (char *) uri->data, uri->len);
+    strncpy(argdata, (char *) args->data, args->len);
+    strncpy(umdata,  (char *) usermethod->data, usermethod->len);
+    uridata[uri->len] = argdata[args->len] = umdata[usermethod->len] = '\0';
+
+    // Send record to redis for further actioning...
+    record(main_conf->redis.connection, timestamp, uadata, umdata, uridata, argdata, main_conf->redis.max_length, main_conf->redis.expiry, address);
+  }
+
   if (loc_conf->auto_blacklist || loc_conf->auto_mark) {
     int address_code;
     char address[INET6_ADDRSTRLEN];
@@ -492,6 +548,14 @@ static ngx_command_t ngx_http_repsheet_commands[] = {
     NULL
   },
   {
+    ngx_string("repsheet_recorder"),
+    NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
+    ngx_conf_set_flag_slot,
+    NGX_HTTP_MAIN_CONF_OFFSET,
+    offsetof(repsheet_main_conf_t, recorder),
+    NULL
+  },
+  {
     ngx_string("repsheet_proxy_headers"),
     NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
     ngx_conf_set_flag_slot,
@@ -545,6 +609,14 @@ static ngx_command_t ngx_http_repsheet_commands[] = {
     ngx_conf_set_num_slot,
     NGX_HTTP_MAIN_CONF_OFFSET,
     offsetof(repsheet_main_conf_t, redis.read_timeout),
+    NULL
+  },
+  {
+    ngx_string("repsheet_redis_max_length"),
+    NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
+    ngx_conf_set_num_slot,
+    NGX_HTTP_MAIN_CONF_OFFSET,
+    offsetof(repsheet_main_conf_t, redis.max_length),
     NULL
   },
   {
@@ -626,6 +698,7 @@ ngx_http_repsheet_create_main_conf(ngx_conf_t *cf)
 
   conf->ip_lookup = NGX_CONF_UNSET;
   conf->user_lookup = NGX_CONF_UNSET;
+  conf->recorder = NGX_CONF_UNSET;
 
   conf->proxy_headers = NGX_CONF_UNSET;
   conf->whitelist_CIDR_cache_initial_size = NGX_CONF_UNSET;
