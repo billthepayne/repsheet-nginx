@@ -471,7 +471,7 @@ ngx_http_repsheet_handler(ngx_http_request_t *r)
     }
 
     // Send record to redis for further actioning...
-    record(main_conf->redis.connection, timestamp, uadata, umdata, uridata, argdata, main_conf->redis.max_length, main_conf->redis.expiry, address, (char *) s_tid.data);
+    record(main_conf->redis.connection, timestamp, uadata, umdata, uridata, argdata, main_conf->redis.max_length, main_conf->cache_expiry, address, (char *) s_tid.data);
   }
 
   if (loc_conf->auto_blacklist || loc_conf->auto_mark) {
