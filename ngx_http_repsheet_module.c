@@ -33,6 +33,7 @@ typedef struct {
   ngx_flag_t auto_mark;
   ngx_str_t proxy_headers_header;
   ngx_flag_t proxy_headers_fallback;
+  ngx_http_complex_value_t *transaction_id;
 } repsheet_loc_conf_t;
 
 typedef struct {
@@ -422,6 +423,7 @@ ngx_http_repsheet_handler(ngx_http_request_t *r)
     ngx_str_t *uri;
     ngx_str_t *args;
     ngx_str_t *usermethod;
+    ngx_str_t s_tid;
 
     // Max length for user-agent = 4096 bytes
     char uadata[4097];
@@ -459,8 +461,17 @@ ngx_http_repsheet_handler(ngx_http_request_t *r)
     strncpy(umdata,  (char *) usermethod->data, usermethod->len);
     uridata[uri->len] = argdata[args->len] = umdata[usermethod->len] = '\0';
 
+    // Process transaction id (unique per request)
+    ngx_str_set(&s_tid, "-");
+    if (loc_conf->transaction_id) {
+      if (ngx_http_complex_value(r, loc_conf->transaction_id, &s_tid) != NGX_OK) {
+        //return NGX_CONF_ERROR;
+        return NGX_DECLINED;
+      }
+    }
+
     // Send record to redis for further actioning...
-    record(main_conf->redis.connection, timestamp, uadata, umdata, uridata, argdata, main_conf->redis.max_length, main_conf->redis.expiry, address);
+    record(main_conf->redis.connection, timestamp, uadata, umdata, uridata, argdata, main_conf->redis.max_length, main_conf->redis.expiry, address, (char *) s_tid.data);
   }
 
   if (loc_conf->auto_blacklist || loc_conf->auto_mark) {
@@ -521,6 +532,35 @@ ngx_http_repsheet_init(ngx_conf_t *cf)
   return NGX_OK;
 }
 
+char *ngx_conf_set_transaction_id_repsheet(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
+  ngx_str_t                         *value;
+  ngx_http_complex_value_t           cv;
+  ngx_http_compile_complex_value_t   ccv;
+  //ngx_http_modsecurity_conf_t *mcf = conf;
+  repsheet_loc_conf_t *mcf = conf;
+
+  value = cf->args->elts;
+
+  ngx_memzero(&ccv, sizeof(ngx_http_compile_complex_value_t));
+
+  ccv.cf = cf;
+  ccv.value = &value[1];
+  ccv.complex_value = &cv;
+  ccv.zero = 1;
+
+  if (ngx_http_compile_complex_value(&ccv) != NGX_OK) {
+    return NGX_CONF_ERROR;
+  }
+
+  mcf->transaction_id = ngx_palloc(cf->pool, sizeof(ngx_http_complex_value_t));
+  if (mcf->transaction_id == NULL) {
+    return NGX_CONF_ERROR;
+  }
+
+  *mcf->transaction_id = cv;
+
+  return NGX_CONF_OK;
+}
 
 static ngx_command_t ngx_http_repsheet_commands[] = {
   {
@@ -553,6 +593,14 @@ static ngx_command_t ngx_http_repsheet_commands[] = {
     ngx_conf_set_flag_slot,
     NGX_HTTP_MAIN_CONF_OFFSET,
     offsetof(repsheet_main_conf_t, recorder),
+    NULL
+  },
+  {
+    ngx_string("repsheet_transaction_id"),
+    NGX_HTTP_LOC_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_MAIN_CONF|NGX_CONF_1MORE,
+    ngx_conf_set_transaction_id_repsheet,
+    NGX_HTTP_LOC_CONF_OFFSET,
+    0,
     NULL
   },
   {
@@ -723,6 +771,7 @@ ngx_http_repsheet_create_loc_conf(ngx_conf_t *cf)
   conf->auto_blacklist = NGX_CONF_UNSET;
   conf->auto_mark = NGX_CONF_UNSET;
   conf->proxy_headers_fallback = NGX_CONF_UNSET;
+  conf->transaction_id = NGX_CONF_UNSET_PTR;
 
   return conf;
 }
@@ -739,6 +788,7 @@ ngx_http_repsheet_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
   ngx_conf_merge_value(conf->auto_mark, prev->auto_mark, 0);
   ngx_conf_merge_str_value(conf->proxy_headers_header, prev->proxy_headers_header, "X-Forwarded-For");
   ngx_conf_merge_value(conf->proxy_headers_fallback, prev->proxy_headers_fallback, 0);
+  ngx_conf_merge_ptr_value(conf->transaction_id, prev->transaction_id, NULL);
 
   return NGX_CONF_OK;
 }
