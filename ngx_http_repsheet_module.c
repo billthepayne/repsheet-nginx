@@ -276,7 +276,7 @@ lookup_user(ngx_http_request_t *r, repsheet_main_conf_t *main_conf, repsheet_loc
     memcpy(lookup_value, cookie_value.data, cookie_value.len);
     lookup_value[cookie_value.len] = '\0';
     user_status = actor_status(main_conf->redis.connection, (const char *)lookup_value, USER, reason_user);
-
+/*
     if (is_user_marked(main_conf->redis.connection, (const char *)lookup_value, reason_user)) {
       ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[Repsheet] - USER %V was found on repsheet. Reason: %s", &cookie_value, reason_user);
       if (flag_request(r, reason_user) != NGX_OK) {
@@ -284,6 +284,7 @@ lookup_user(ngx_http_request_t *r, repsheet_main_conf_t *main_conf, repsheet_loc
         return NGX_DECLINED;
       }
     }
+*/
   }
 
   if (user_status == DISCONNECTED) {
@@ -320,7 +321,7 @@ lookup_ip(ngx_http_request_t *r, repsheet_main_conf_t *main_conf, repsheet_loc_c
     ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[Repsheet] - Request was blocked by repsheet. Reason: Invalid X-Forwarded-For", address);
     return NGX_HTTP_FORBIDDEN;
   }
-
+/*
   if (is_ip_marked(main_conf->redis.connection, address, reason_ip)) {
     ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[Repsheet] - IP %s was found on repsheet. Reason: %s", address, reason_ip);
     if (flag_request(r, reason_ip) != NGX_OK) {
@@ -328,7 +329,7 @@ lookup_ip(ngx_http_request_t *r, repsheet_main_conf_t *main_conf, repsheet_loc_c
       return NGX_DECLINED;
     }
   }
-
+*/
   ip_status = actor_status(main_conf->redis.connection, address, IP, reason_ip);
 
   if (ip_status == DISCONNECTED) {
