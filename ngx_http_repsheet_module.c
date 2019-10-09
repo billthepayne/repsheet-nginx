@@ -89,7 +89,7 @@ ngx_http_repsheet_variable(ngx_http_request_t *r, ngx_http_variable_value_t *v, 
   return NGX_OK;
 }
 
-
+/*
 static int
 flag_request(ngx_http_request_t *r, char *reason)
 {
@@ -114,6 +114,7 @@ flag_request(ngx_http_request_t *r, char *reason)
 
   return NGX_OK;
 }
+*/
 
 static ngx_int_t
 ngx_http_repsheet_preconf_add_variables(ngx_conf_t *cf)
